@@ -24,6 +24,7 @@ class _CadastroState extends State<Cadastro> {
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              
               children: <Widget>[
                 TextField(
                   controller: _controllerNome,
