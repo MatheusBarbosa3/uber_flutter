@@ -171,7 +171,7 @@ class _HomeState extends State<Home> {
                         "Entrar",
                         style: TextStyle(color: Colors.white, fontSize: 20),
                       ),
-                      color: Color(0xff1ebbd8),
+                      color: Colors.black,
                       padding: EdgeInsets.fromLTRB(32, 16, 32, 16),
                       onPressed: (){
                         _validarCampos();
@@ -182,7 +182,7 @@ class _HomeState extends State<Home> {
                   child: GestureDetector(
                     child: Text(
                       "Não tem conta? cadastre-se!",
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: Colors.deepPurple, fontSize: 15),
                     ),
                     onTap: (){
                       Navigator.pushNamed(context, "/cadastro");
@@ -190,7 +190,7 @@ class _HomeState extends State<Home> {
                   ),
                 ),
                 _carregando
-                    ? Center(child: CircularProgressIndicator(backgroundColor: Colors.white,),)
+                    ? Center(child: CircularProgressIndicator(backgroundColor: Colors.cyan,),)
                         : Container(),
                 Padding(
                   padding: EdgeInsets.only(top: 16),
