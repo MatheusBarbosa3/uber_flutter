@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intl/intl.dart';
 import 'package:uber_flutter/model/Usuario.dart';
 import 'package:uber_flutter/util/StatusRequisicao.dart';
 import 'package:uber_flutter/util/UsuarioFirebase.dart';
@@ -161,10 +162,10 @@ class _CorridaState extends State<Corrida> {
             _statusACaminho();
             break;
           case StatusRequisicao.VIAGEM :
-
+            _statusEmViagem();
             break;
           case StatusRequisicao.FINALIZADA :
-
+            _statusFinalizada();
             break;
 
         }
@@ -259,6 +260,121 @@ class _CorridaState extends State<Corrida> {
 
   }
 
+  _finalizarCorrida(){
+
+    Firestore db = Firestore.instance;
+    db.collection("requisicoes")
+        .document( _idRequisicao )
+        .updateData({
+      "status" : StatusRequisicao.FINALIZADA
+    });
+
+
+    String idPassageiro = _dadosRequisicao["passageiro"]["idUsuario"];
+    db.collection("requisicao_ativa")
+        .document( idPassageiro )
+        .updateData({"status": StatusRequisicao.FINALIZADA });
+
+    String idMotorista = _dadosRequisicao["motorista"]["idUsuario"];
+    db.collection("requisicao_ativa_motorista")
+        .document( idMotorista )
+        .updateData({"status": StatusRequisicao.FINALIZADA });
+
+  }
+
+  _statusFinalizada() async {
+
+    //Calcula valor da corrida
+    double latitudeDestino = _dadosRequisicao["destino"]["latitude"];
+    double longitudeDestino = _dadosRequisicao["destino"]["longitude"];
+
+    double latitudeOrigem = _dadosRequisicao["origem"]["latitude"];
+    double longitudeOrigem = _dadosRequisicao["origem"]["longitude"];
+
+    double distanciaEmMetros = await Geolocator().distanceBetween(
+        latitudeOrigem,
+        longitudeOrigem,
+        latitudeDestino,
+        longitudeDestino
+    );
+
+    //Converte para KM
+    double distanciaKm = distanciaEmMetros / 1000;
+
+    //8 é o valor cobrado por KM
+    double valorViagem = distanciaKm * 8;
+
+    //Formatar valor viagem
+    var f = new NumberFormat("#,##0.00", "pt_BR");
+    var valorViagemFormatado = f.format( valorViagem );
+
+    _mensagemStatus = "Viagem finalizada";
+    _alterarBotaoPrincipal(
+        "Confirmar - R\$ ${valorViagemFormatado}",
+        Color(0xff1ebbd8),
+            (){
+          _confirmarCorrida();
+        }
+    );
+
+  }
+
+  _confirmarCorrida(){
+
+  }
+
+  _statusEmViagem() {
+
+    _mensagemStatus = "Em viagem";
+    _alterarBotaoPrincipal(
+        "Finalizar corrida",
+        Color(0xff1ebbd8),
+            (){
+          _finalizarCorrida();
+        }
+    );
+
+
+    double latitudeDestino = _dadosRequisicao["destino"]["latitude"];
+    double longitudeDestino = _dadosRequisicao["destino"]["longitude"];
+
+    double latitudeOrigem = _dadosRequisicao["motorista"]["latitude"];
+    double longitudeOrigem = _dadosRequisicao["motorista"]["longitude"];
+
+    //Exibir dois marcadores
+    _exibirDoisMarcadores(
+        LatLng(latitudeOrigem, longitudeOrigem),
+        LatLng(latitudeDestino, longitudeDestino)
+    );
+
+    //'southwest.latitude <= northeast.latitude': is not true
+    var nLat, nLon, sLat, sLon;
+
+    if( latitudeOrigem <=  latitudeDestino ){
+      sLat = latitudeOrigem;
+      nLat = latitudeDestino;
+    }else{
+      sLat = latitudeDestino;
+      nLat = latitudeOrigem;
+    }
+
+    if( longitudeOrigem <=  longitudeDestino ){
+      sLon = longitudeOrigem;
+      nLon = longitudeDestino;
+    }else{
+      sLon = longitudeDestino;
+      nLon = longitudeOrigem;
+    }
+    //-23.560925, -46.650623
+    _movimentarCameraBounds(
+        LatLngBounds(
+            northeast: LatLng(nLat, nLon), //nordeste
+            southwest: LatLng(sLat, sLon) //sudoeste
+        )
+    );
+
+  }
+
   _iniciarCorrida(){
 
     Firestore db = Firestore.instance;
@@ -329,6 +445,7 @@ class _CorridaState extends State<Corrida> {
     setState(() {
       _marcadores = _listaMarcadores;
     });
+
   }
 
   _aceitarCorrida() async {
@@ -363,7 +480,11 @@ class _CorridaState extends State<Corrida> {
         "id_usuario" : idMotorista,
         "status" : StatusRequisicao.A_CAMINHO,
       });
+
     });
+
+
+
   }
 
   @override
@@ -377,6 +498,7 @@ class _CorridaState extends State<Corrida> {
 
     //_recuperaUltimaLocalizacaoConhecida();
     _adicionarListenerLocalizacao();
+
   }
 
   @override
