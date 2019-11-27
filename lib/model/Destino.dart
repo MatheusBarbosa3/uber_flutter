@@ -1,6 +1,4 @@
-
 class Destino {
-
   String _rua;
   String _numero;
   String _cidade;
@@ -53,5 +51,4 @@ class Destino {
   set rua(String value) {
     _rua = value;
   }
-
 }
