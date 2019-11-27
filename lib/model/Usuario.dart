@@ -7,14 +7,25 @@ class Usuario {
   String _senha;
   String _tipoUsuario;
 
+  double _latitude;
+  double _longitude;
+
   Usuario();
+
+  double get latitude => _latitude;
+
+  set latitude(double value) {
+    _latitude = value;
+  }
 
   Map<String, dynamic> toMap(){
 
     Map<String, dynamic> map = {
-      "nome" : this.nome,
-      "email" : this.email,
+      "nome"        : this.nome,
+      "email"       : this.email,
       "tipoUsuario" : this.tipoUsuario,
+      "latitude"    : this.latitude,
+      "longitude"   : this.longitude,
     };
 
     return map;
@@ -54,5 +65,12 @@ class Usuario {
   set idUsuario(String value) {
     _idUsuario = value;
   }
+
+  double get longitude => _longitude;
+
+  set longitude(double value) {
+    _longitude = value;
+  }
+
 
 }

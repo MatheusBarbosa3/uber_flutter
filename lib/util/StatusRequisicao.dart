@@ -1,9 +1,10 @@
 
 class StatusRequisicao {
 
-  static final String AGUARDANDO = "aguardando";
-  static final String A_CAMINHO = "a_caminho";
-  static final String VIAGEM = "viagem";
-  static final String FINALIZADA = "finalizada";
+  static const String AGUARDANDO = "aguardando";
+  static const String A_CAMINHO = "a_caminho";
+  static const String VIAGEM = "viagem";
+  static const String FINALIZADA = "finalizada";
+  static const String CANCELADA = "cancelada";
 
 }
