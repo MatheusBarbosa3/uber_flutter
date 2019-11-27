@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import 'dart:io';
+
 import 'package:uber_flutter/model/Destino.dart';
 import 'package:uber_flutter/model/Requisicao.dart';
 import 'package:uber_flutter/model/Usuario.dart';
@@ -25,11 +26,14 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
   CameraPosition(target: LatLng(-23.563999, -46.653256));
   Set<Marker> _marcadores = {};
   String _idRequisicao;
+  Position _localPassageiro;
+  Map<String, dynamic> _dadosRequisicao;
+  StreamSubscription<DocumentSnapshot> _streamSubscriptionRequisicoes;
 
   //Controles para exibição na tela
   bool _exibirCaixaEnderecoDestino = true;
   String _textoBotao = "Chamar uber";
-  Color _corBotao = Colors.black;
+  Color _corBotao = Color(0xff1ebbd8);
   Function _funcaoBotao;
 
   _deslogarUsuario() async {
@@ -59,12 +63,25 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
     LocationOptions(accuracy: LocationAccuracy.high, distanceFilter: 10);
 
     geolocator.getPositionStream(locationOptions).listen((Position position) {
-      _exibirMarcadorPassageiro(position);
 
-      _posicaoCamera = CameraPosition(
-          target: LatLng(position.latitude, position.longitude), zoom: 19);
+      if( _idRequisicao != null && _idRequisicao.isNotEmpty ){
 
-      _movimentarCamera(_posicaoCamera);
+        //Atualiza local do passageiro
+        UsuarioFirebase.atualizarDadosLocalizacao(
+            _idRequisicao,
+            position.latitude,
+            position.longitude
+        );
+
+      }else{
+        setState(() {
+          _localPassageiro = position;
+        });
+        _statusUberNaoChamado();
+      }
+
+
+
     });
   }
 
@@ -78,7 +95,7 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
 
         _posicaoCamera = CameraPosition(
             target: LatLng(position.latitude, position.longitude), zoom: 19);
-
+        _localPassageiro = position;
         _movimentarCamera(_posicaoCamera);
       }
     });
@@ -181,6 +198,8 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
     * */
 
     Usuario passageiro = await UsuarioFirebase.getDadosUsuarioLogado();
+    passageiro.latitude = _localPassageiro.latitude;
+    passageiro.longitude = _localPassageiro.longitude;
 
     Requisicao requisicao = Requisicao();
     requisicao.destino = destino;
@@ -193,7 +212,7 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
     db
         .collection("requisicoes")
         .document(requisicao.id)
-        .setData(requisicao.toMap());
+        .setData( requisicao.toMap() );
 
     //Salvar requisição ativa
     Map<String, dynamic> dadosRequisicaoAtiva = {};
@@ -205,6 +224,12 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
         .collection("requisicao_ativa")
         .document(passageiro.idUsuario)
         .setData(dadosRequisicaoAtiva);
+
+    //Adicionar listener requisicao
+    if( _streamSubscriptionRequisicoes == null ){
+      _adicionarListenerRequisicao( requisicao.id );
+    }
+
   }
 
   _alterarBotaoPrincipal(String texto, Color cor, Function funcao) {
@@ -216,19 +241,147 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
   }
 
   _statusUberNaoChamado() {
+
     _exibirCaixaEnderecoDestino = true;
 
-    _alterarBotaoPrincipal("Chamar uber", Colors.black, () {
+    _alterarBotaoPrincipal("Chamar uber", Color(0xff1ebbd8), () {
       _chamarUber();
     });
+
+    if( _localPassageiro != null ){
+
+      Position position = Position(
+          latitude: _localPassageiro.latitude,
+          longitude: _localPassageiro.longitude
+      );
+      _exibirMarcadorPassageiro(position);
+      CameraPosition cameraPosition = CameraPosition(
+          target: LatLng(position.latitude, position.longitude), zoom: 19);
+      _movimentarCamera( cameraPosition );
+
+    }
+
   }
 
   _statusAguardando() {
+
     _exibirCaixaEnderecoDestino = false;
 
     _alterarBotaoPrincipal("Cancelar", Colors.red, () {
       _cancelarUber();
     });
+
+    double passageiroLat = _dadosRequisicao["passageiro"]["latitude"];
+    double passageiroLon = _dadosRequisicao["passageiro"]["longitude"];
+    Position position = Position(
+        latitude: passageiroLat,
+        longitude: passageiroLon
+    );
+    _exibirMarcadorPassageiro(position);
+    CameraPosition cameraPosition = CameraPosition(
+        target: LatLng(position.latitude, position.longitude), zoom: 19);
+    _movimentarCamera( cameraPosition );
+
+  }
+
+  _statusACaminho() {
+
+    _exibirCaixaEnderecoDestino = false;
+
+    _alterarBotaoPrincipal(
+        "Motorista a caminho",
+        Colors.grey,
+            () {
+
+        });
+
+    double latitudePassageiro = _dadosRequisicao["passageiro"]["latitude"];
+    double longitudePassageiro = _dadosRequisicao["passageiro"]["longitude"];
+
+    double latitudeMotorista = _dadosRequisicao["motorista"]["latitude"];
+    double longitudeMotorista = _dadosRequisicao["motorista"]["longitude"];
+
+    //Exibir dois marcadores
+    _exibirDoisMarcadores(
+        LatLng(latitudeMotorista, longitudeMotorista),
+        LatLng(latitudePassageiro, longitudePassageiro)
+    );
+
+    //'southwest.latitude <= northeast.latitude': is not true
+    var nLat, nLon, sLat, sLon;
+
+    if( latitudeMotorista <=  latitudePassageiro ){
+      sLat = latitudeMotorista;
+      nLat = latitudePassageiro;
+    }else{
+      sLat = latitudePassageiro;
+      nLat = latitudeMotorista;
+    }
+
+    if( longitudeMotorista <=  longitudePassageiro ){
+      sLon = longitudeMotorista;
+      nLon = longitudePassageiro;
+    }else{
+      sLon = longitudePassageiro;
+      nLon = longitudeMotorista;
+    }
+    //-23.560925, -46.650623
+    _movimentarCameraBounds(
+        LatLngBounds(
+            northeast: LatLng(nLat, nLon), //nordeste
+            southwest: LatLng(sLat, sLon) //sudoeste
+        )
+    );
+
+
+  }
+
+  _movimentarCameraBounds(LatLngBounds latLngBounds) async {
+
+    GoogleMapController googleMapController = await _controller.future;
+    googleMapController
+        .animateCamera(
+        CameraUpdate.newLatLngBounds(
+            latLngBounds,
+            100
+        )
+    );
+
+  }
+
+  _exibirDoisMarcadores(LatLng latLngMotorista, LatLng latLngPassageiro){
+
+    double pixelRatio = MediaQuery.of(context).devicePixelRatio;
+
+    Set<Marker> _listaMarcadores = {};
+    BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(devicePixelRatio: pixelRatio),
+        "images/motorista.png")
+        .then((BitmapDescriptor icone) {
+      Marker marcador1 = Marker(
+          markerId: MarkerId("marcador-motorista"),
+          position: LatLng(latLngMotorista.latitude, latLngMotorista.longitude),
+          infoWindow: InfoWindow(title: "Local motorista"),
+          icon: icone);
+      _listaMarcadores.add( marcador1 );
+    });
+
+    BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(devicePixelRatio: pixelRatio),
+        "images/passageiro.png")
+        .then((BitmapDescriptor icone) {
+      Marker marcador2 = Marker(
+          markerId: MarkerId("marcador-passageiro"),
+          position: LatLng(latLngPassageiro.latitude, latLngPassageiro.longitude),
+          infoWindow: InfoWindow(title: "Local passageiro"),
+          icon: icone);
+      _listaMarcadores.add( marcador2 );
+    });
+
+    setState(() {
+      _marcadores = _listaMarcadores;
+    });
+
   }
 
   _cancelarUber() async {
@@ -249,26 +402,40 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
 
   }
 
-  _adicionarListenerRequisicaoAtiva() async {
+  _recuperaRequisicaoAtiva() async {
+
     FirebaseUser firebaseUser = await UsuarioFirebase.getUsuarioAtual();
 
     Firestore db = Firestore.instance;
-    await db
+    DocumentSnapshot documentSnapshot = await db
         .collection("requisicao_ativa")
         .document(firebaseUser.uid)
-        .snapshots()
-        .listen((snapshot) {
-      //print("dados recuperados: " + snapshot.data.toString() );
+        .get();
 
-      /*
-            Caso tenha uma requisicao ativa
-              -> altera interface de acordo com status
-            Caso não tenha
-              -> Exibe interface padrão para chamar uber
-        */
+    if( documentSnapshot.data != null ){
+
+      Map<String, dynamic> dados = documentSnapshot.data;
+      _idRequisicao = dados["id_requisicao"];
+      _adicionarListenerRequisicao( _idRequisicao );
+
+    }else{
+
+      _statusUberNaoChamado();
+
+    }
+
+  }
+
+  _adicionarListenerRequisicao(String idRequisicao) async {
+
+    Firestore db = Firestore.instance;
+    _streamSubscriptionRequisicoes = await db.collection("requisicoes")
+        .document( idRequisicao ).snapshots().listen((snapshot){
+
       if( snapshot.data != null ){
 
         Map<String, dynamic> dados = snapshot.data;
+        _dadosRequisicao = dados;
         String status = dados["status"];
         _idRequisicao = dados["id_requisicao"];
 
@@ -277,7 +444,7 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
             _statusAguardando();
             break;
           case StatusRequisicao.A_CAMINHO :
-
+            _statusACaminho();
             break;
           case StatusRequisicao.VIAGEM :
 
@@ -288,23 +455,22 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
 
         }
 
-      }else{
-
-        _statusUberNaoChamado();
-
       }
 
     });
+
   }
 
   @override
   void initState() {
     super.initState();
-    _recuperaUltimaLocalizacaoConhecida();
-    _adicionarListenerLocalizacao();
 
     //adicionar listener para requisicao ativa
-    _adicionarListenerRequisicaoAtiva();
+    _recuperaRequisicaoAtiva();
+
+    //_recuperaUltimaLocalizacaoConhecida();
+    _adicionarListenerLocalizacao();
+
   }
 
   @override
@@ -434,4 +600,11 @@ class _PainelPassageiroState extends State<PainelPassageiro> {
       ),
     );
   }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _streamSubscriptionRequisicoes.cancel();
+  }
+
 }

@@ -1,8 +1,10 @@
 import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uber_flutter/util/StatusRequisicao.dart';
+import 'package:uber_flutter/util/UsuarioFirebase.dart';
 
 class PainelMotorista extends StatefulWidget {
   @override
@@ -10,48 +12,89 @@ class PainelMotorista extends StatefulWidget {
 }
 
 class _PainelMotoristaState extends State<PainelMotorista> {
-  List<String> itensMenu = ["Configurações", "Deslogar"];
+
+  List<String> itensMenu = [
+    "Configurações", "Deslogar"
+  ];
   final _controller = StreamController<QuerySnapshot>.broadcast();
   Firestore db = Firestore.instance;
 
   _deslogarUsuario() async {
+
     FirebaseAuth auth = FirebaseAuth.instance;
 
     await auth.signOut();
     Navigator.pushReplacementNamed(context, "/");
+
   }
 
-  _escolhaMenuItem(String escolha) {
-    switch (escolha) {
-      case "Deslogar":
+  _escolhaMenuItem( String escolha ){
+
+    switch( escolha ){
+      case "Deslogar" :
         _deslogarUsuario();
         break;
-      case "Configurações":
+      case "Configurações" :
+
         break;
     }
+
   }
 
-  Stream<QuerySnapshot> _adicionarListenerRequisicoes() {
-    final stream = db
-        .collection("requisicoes")
-        .where("status", isEqualTo: StatusRequisicao.AGUARDANDO)
+  Stream<QuerySnapshot> _adicionarListenerRequisicoes(){
+
+    final stream = db.collection("requisicoes")
+        .where("status", isEqualTo: StatusRequisicao.AGUARDANDO )
         .snapshots();
 
-    stream.listen((dados) {
-      _controller.add(dados);
+    stream.listen((dados){
+      _controller.add( dados );
     });
+
+  }
+
+  _recuperaRequisicaoAtivaMotorista() async {
+
+    //Recupera dados do usuario logado
+    FirebaseUser firebaseUser = await UsuarioFirebase.getUsuarioAtual();
+
+    //Recupera requisicao ativa
+    DocumentSnapshot documentSnapshot = await db
+        .collection("requisicao_ativa_motorista")
+        .document( firebaseUser.uid ).get();
+
+    var dadosRequisicao = documentSnapshot.data;
+
+    if( dadosRequisicao == null ){
+      _adicionarListenerRequisicoes();
+    }else{
+
+      String idRequisicao = dadosRequisicao["id_requisicao"];
+      Navigator.pushReplacementNamed(
+          context,
+          "/corrida",
+          arguments: idRequisicao
+      );
+
+    }
+
   }
 
   @override
   void initState() {
     super.initState();
 
-    //adiciona listener para recuperar requisições
-    _adicionarListenerRequisicoes();
+    /*
+    Recupera requisicao ativa para verificar se motorista está
+    atendendo alguma requisição e envia ele para tela de corrida
+    */
+    _recuperaRequisicaoAtivaMotorista();
+
   }
 
   @override
   Widget build(BuildContext context) {
+
     var mensagemCarregando = Center(
       child: Column(
         children: <Widget>[
@@ -64,7 +107,10 @@ class _PainelMotoristaState extends State<PainelMotorista> {
     var mensagemNaoTemDados = Center(
       child: Text(
         "Você não tem nenhuma requisição :( ",
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold
+        ),
       ),
     );
 
@@ -74,13 +120,17 @@ class _PainelMotoristaState extends State<PainelMotorista> {
         actions: <Widget>[
           PopupMenuButton<String>(
             onSelected: _escolhaMenuItem,
-            itemBuilder: (context) {
-              return itensMenu.map((String item) {
+            itemBuilder: (context){
+
+              return itensMenu.map((String item){
+
                 return PopupMenuItem<String>(
                   value: item,
                   child: Text(item),
                 );
+
               }).toList();
+
             },
           )
         ],
@@ -88,31 +138,34 @@ class _PainelMotoristaState extends State<PainelMotorista> {
       body: StreamBuilder<QuerySnapshot>(
           stream: _controller.stream,
           // ignore: missing_return
-          builder: (context, snapshot) {
-            switch (snapshot.connectionState) {
+          builder: (context, snapshot){
+            switch( snapshot.connectionState ){
               case ConnectionState.none:
               case ConnectionState.waiting:
                 return mensagemCarregando;
                 break;
               case ConnectionState.active:
               case ConnectionState.done:
-                if (snapshot.hasError) {
+
+                if( snapshot.hasError ){
                   return Text("Erro ao carregar os dados!");
-                } else {
+                }else {
+
                   QuerySnapshot querySnapshot = snapshot.data;
-                  if (querySnapshot.documents.length == 0) {
+                  if( querySnapshot.documents.length == 0 ){
                     return mensagemNaoTemDados;
-                  } else {
+                  }else{
+
                     return ListView.separated(
                         itemCount: querySnapshot.documents.length,
                         separatorBuilder: (context, indice) => Divider(
-                              height: 2,
-                              color: Colors.grey,
-                            ),
-                        itemBuilder: (context, indice) {
-                          List<DocumentSnapshot> requisicoes =
-                              querySnapshot.documents.toList();
-                          DocumentSnapshot item = requisicoes[indice];
+                          height: 2,
+                          color: Colors.grey,
+                        ),
+                        itemBuilder: (context, indice){
+
+                          List<DocumentSnapshot> requisicoes = querySnapshot.documents.toList();
+                          DocumentSnapshot item = requisicoes[ indice ];
 
                           String idRequisicao = item["id"];
                           String nomePassageiro = item["passageiro"]["nome"];
@@ -120,20 +173,28 @@ class _PainelMotoristaState extends State<PainelMotorista> {
                           String numero = item["destino"]["numero"];
 
                           return ListTile(
-                            title: Text(nomePassageiro),
+                            title: Text( nomePassageiro ),
                             subtitle: Text("destino: $rua, $numero"),
-                            onTap: () {
-                              Navigator.pushNamed(context, "/corrida",
-                                  arguments: idRequisicao);
+                            onTap: (){
+                              Navigator.pushNamed(
+                                  context,
+                                  "/corrida",
+                                  arguments: idRequisicao
+                              );
                             },
                           );
-                        });
+
+                        }
+                    );
+
                   }
+
                 }
 
                 break;
             }
-          }),
+          }
+      ),
     );
   }
 }
