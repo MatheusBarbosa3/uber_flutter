@@ -1,4 +1,4 @@
-# Projeto Uber Clone
+# Uber Clone
 
 A new Flutter application.
 
